@@ -1,3 +1,3 @@
 # concurrency
 
-A golang library the contains concurrency utils.
+A golang library that contains concurrency utils.
