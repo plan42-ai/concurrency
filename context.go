@@ -10,17 +10,15 @@ import (
 // for implementing components that support both Graceful shutdown (with timeouts) and forced cancellation.
 // Its use is subject to the following constraints:
 //
-//  1. You must call Init(), after setting the counter to a non-zero value. This triggers shutdown notification once
-//     the counter reaches zero. If Init() is not called, calls to Wait() or Close() will block indefinitely.
-//  2. After Init() is called, shutdown will be triggered when the counter reaches zero, and all goroutines blocked on Wait will be released.
-//  3. Calling Add() after shutdown will panic.
-//  4. To avoid a resource leak, you must arrange to call Cancel() (directly, or via Close()).
+//  1. After Wait(), WaitTimeout() or Close() is called, shutdown will be triggered when the counter reaches zero, and all goroutines blocked on Wait will be released.
+//  2. Calling Add() after shutdown will panic.
+//  3. To avoid a resource leak, you must arrange to call Cancel() (directly, or via Close()).
 type ContextGroup struct {
-	wg       sync.WaitGroup
-	ctx      context.Context
-	cancel   context.CancelFunc
-	init     sync.Once
-	shutdown chan struct{}
+	wg             sync.WaitGroup
+	ctx            context.Context
+	cancel         context.CancelFunc
+	notifyShutdown sync.Once
+	shutdown       chan struct{}
 }
 
 func NewContextGroup() *ContextGroup {
@@ -59,11 +57,13 @@ func (c *ContextGroup) Context() context.Context {
 	return c.ctx
 }
 
-// Init triggers shutdown tracking. Calling Init more than once is a no-op.
-func (c *ContextGroup) Init() {
-	c.init.Do(func() {
-		go NotifyShutdown(c.shutdown, &c.wg)
-	})
+// ensureNotifyShutdown triggers shutdown tracking. Calling ensureNotifyShutdown more than once is a no-op.
+func (c *ContextGroup) ensureNotifyShutdown() {
+	c.notifyShutdown.Do(
+		func() {
+			go NotifyShutdown(c.shutdown, &c.wg)
+		},
+	)
 }
 
 // Wait blocks until the [ContextGroup] counter is zero.
@@ -74,6 +74,7 @@ func (c *ContextGroup) Wait() {
 // WaitContext blocks until the [ContextGroup] counter is zero or the provided context is completed.
 // If the context is completed before the counter reaches zero, it returns the context's error.
 func (c *ContextGroup) WaitContext(ctx context.Context) error {
+	c.ensureNotifyShutdown()
 	select {
 	case <-c.shutdown:
 		return nil
@@ -93,6 +94,7 @@ func (c *ContextGroup) WaitTimeout(d time.Duration) error {
 
 // Close is equivalent to running Cancel() followed by Wait().
 func (c *ContextGroup) Close() error {
+	c.ensureNotifyShutdown()
 	c.cancel()
 
 	<-c.shutdown
