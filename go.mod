@@ -1,3 +1,3 @@
-module github.com/debugging-sucks/concurrency
+module github.com/plan42-ai/concurrency
 
 go 1.24.3
