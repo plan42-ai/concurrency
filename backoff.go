@@ -59,6 +59,28 @@ func (b *Backoff) WaitContext(ctx context.Context) error {
 	}
 }
 
+func (b *Backoff) WaitChannel() <-chan time.Time {
+	var waitDuration time.Duration
+
+	if b.current != 0 {
+		// #nosec G404 (jitter doesn't need a secure rng)
+		waitDuration = rand.N(b.current)
+	}
+
+	if b.timer == nil {
+		b.timer = time.NewTimer(waitDuration)
+	} else {
+		b.timer.Reset(waitDuration)
+	}
+	return b.timer.C
+}
+
+func (b *Backoff) StopTimer() {
+	if b.timer != nil {
+		b.timer.Stop()
+	}
+}
+
 func NewBackoff(minBackoff, maxBackoff time.Duration) *Backoff {
 	return &Backoff{
 		min: minBackoff,
