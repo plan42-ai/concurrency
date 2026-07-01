@@ -3,10 +3,12 @@ package concurrency
 import (
 	"context"
 	"math/rand/v2"
+	"sync"
 	"time"
 )
 
 type Backoff struct {
+	mux     sync.Mutex
 	min     time.Duration
 	max     time.Duration
 	current time.Duration
@@ -14,6 +16,8 @@ type Backoff struct {
 }
 
 func (b *Backoff) Backoff() {
+	b.mux.Lock()
+	defer b.mux.Unlock()
 	if b.current == 0 {
 		b.current = b.min
 		return
@@ -26,6 +30,9 @@ func (b *Backoff) Backoff() {
 }
 
 func (b *Backoff) Recover() {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+
 	b.current /= 2
 	if b.current < b.min {
 		b.current = 0
@@ -37,12 +44,14 @@ func (b *Backoff) Wait() error {
 }
 
 func (b *Backoff) WaitContext(ctx context.Context) error {
-	if b.current == 0 {
+	current := b.getCurrent()
+
+	if current == 0 {
 		return nil
 	}
 
 	// #nosec G404 (jitter doesn't need a secure rng)
-	waitTime := rand.N(b.current)
+	waitTime := rand.N(current)
 
 	if b.timer == nil {
 		b.timer = time.NewTimer(waitTime)
@@ -79,6 +88,12 @@ func (b *Backoff) StopTimer() {
 	if b.timer != nil {
 		b.timer.Stop()
 	}
+}
+
+func (b *Backoff) getCurrent() time.Duration {
+	b.mux.Lock()
+	defer b.mux.Unlock()
+	return b.current
 }
 
 func NewBackoff(minBackoff, maxBackoff time.Duration) *Backoff {
