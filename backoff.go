@@ -12,7 +12,6 @@ type Backoff struct {
 	min     time.Duration
 	max     time.Duration
 	current time.Duration
-	timer   *time.Timer
 }
 
 func (b *Backoff) Backoff() {
@@ -52,41 +51,14 @@ func (b *Backoff) WaitContext(ctx context.Context) error {
 
 	// #nosec G404 (jitter doesn't need a secure rng)
 	waitTime := rand.N(current)
-
-	if b.timer == nil {
-		b.timer = time.NewTimer(waitTime)
-	} else {
-		b.timer.Reset(waitTime)
-	}
-	defer b.timer.Stop()
+	timer := time.NewTimer(waitTime)
+	defer timer.Stop()
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-b.timer.C:
+	case <-timer.C:
 		return nil
-	}
-}
-
-func (b *Backoff) WaitChannel() <-chan time.Time {
-	var waitDuration time.Duration
-
-	if b.current != 0 {
-		// #nosec G404 (jitter doesn't need a secure rng)
-		waitDuration = rand.N(b.current)
-	}
-
-	if b.timer == nil {
-		b.timer = time.NewTimer(waitDuration)
-	} else {
-		b.timer.Reset(waitDuration)
-	}
-	return b.timer.C
-}
-
-func (b *Backoff) StopTimer() {
-	if b.timer != nil {
-		b.timer.Stop()
 	}
 }
 
