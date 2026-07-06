@@ -8,10 +8,12 @@ import (
 )
 
 type Backoff struct {
-	mux     sync.Mutex
-	min     time.Duration
-	max     time.Duration
-	current time.Duration
+	mux         sync.Mutex
+	min         time.Duration
+	max         time.Duration
+	current     time.Duration
+	backoffRate float64
+	recoverRate float64
 }
 
 func (b *Backoff) Backoff() {
@@ -22,7 +24,7 @@ func (b *Backoff) Backoff() {
 		return
 	}
 
-	b.current *= 2
+	b.current = time.Duration(float64(b.current) * b.backoffRate)
 	if b.current > b.max {
 		b.current = b.max
 	}
@@ -32,7 +34,7 @@ func (b *Backoff) Recover() {
 	b.mux.Lock()
 	defer b.mux.Unlock()
 
-	b.current /= 2
+	b.current = time.Duration(float64(b.current) * b.recoverRate)
 	if b.current < b.min {
 		b.current = 0
 	}
@@ -68,9 +70,30 @@ func (b *Backoff) getCurrent() time.Duration {
 	return b.current
 }
 
-func NewBackoff(minBackoff, maxBackoff time.Duration) *Backoff {
-	return &Backoff{
-		min: minBackoff,
-		max: maxBackoff,
+type Option func(o *Backoff)
+
+func WithRecoverRate(rate float64) Option {
+	return func(o *Backoff) {
+		o.recoverRate = rate
 	}
+}
+
+func WithBackoffRate(rate float64) Option {
+	return func(o *Backoff) {
+		o.backoffRate = rate
+	}
+}
+
+func NewBackoff(minBackoff, maxBackoff time.Duration, options ...Option) *Backoff {
+	ret := &Backoff{
+		min:         minBackoff,
+		max:         maxBackoff,
+		backoffRate: 2.0,
+		recoverRate: 0.5,
+	}
+
+	for _, option := range options {
+		option(ret)
+	}
+	return ret
 }
