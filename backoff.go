@@ -38,15 +38,15 @@ func (b *Backoff) Recover() {
 	}
 }
 
-func (b *Backoff) Wait() error {
+func (b *Backoff) Wait() (time.Duration, error) {
 	return b.WaitContext(context.Background())
 }
 
-func (b *Backoff) WaitContext(ctx context.Context) error {
+func (b *Backoff) WaitContext(ctx context.Context) (time.Duration, error) {
 	current := b.getCurrent()
 
 	if current == 0 {
-		return nil
+		return 0, nil
 	}
 
 	// #nosec G404 (jitter doesn't need a secure rng)
@@ -56,9 +56,9 @@ func (b *Backoff) WaitContext(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return waitTime, ctx.Err()
 	case <-timer.C:
-		return nil
+		return waitTime, nil
 	}
 }
 
